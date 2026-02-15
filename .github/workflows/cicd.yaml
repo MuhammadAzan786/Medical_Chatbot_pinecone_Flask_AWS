@@ -128,6 +128,11 @@ jobs:
             aws ecr get-login-password --region $AWS_REGION | \
               docker login --username AWS --password-stdin $ECR_REGISTRY
 
+            echo "Cleaning up old Docker images to free space..."
+            docker system prune -af --volumes || true
+            echo "Disk space after cleanup:"
+            df -h /var/lib/docker
+
             echo "Pulling latest Docker image..."
             docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
