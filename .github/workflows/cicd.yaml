@@ -48,21 +48,49 @@ jobs:
     needs: build-and-push
 
     steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v0.1.7
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPO }}
+          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          PINECONE_KEY: ${{ secrets.PINECONE_API_KEY }}
+          HUGGINGFACE_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
+          envs: ECR_REGISTRY,ECR_REPOSITORY,AWS_REGION,AWS_ACCESS_KEY,AWS_SECRET_KEY,PINECONE_KEY,HUGGINGFACE_KEY
           script: |
             # Set variables
-            ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
-            ECR_REPOSITORY=${{ secrets.ECR_REPO }}
             IMAGE_TAG=latest
 
+            echo "Installing/Updating AWS CLI if needed..."
+            if ! command -v aws &> /dev/null; then
+              echo "AWS CLI not found, installing..."
+              curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+              sudo apt-get update && sudo apt-get install -y unzip
+              unzip -q awscliv2.zip
+              sudo ./aws/install
+              rm -rf aws awscliv2.zip
+            fi
+
             echo "Authenticating EC2 with ECR..."
-            aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | \
+            aws ecr get-login-password --region $AWS_REGION | \
               docker login --username AWS --password-stdin $ECR_REGISTRY
 
             echo "Pulling latest Docker image..."
@@ -74,9 +102,9 @@ jobs:
 
             echo "Running new container..."
             docker run -d --name my-app -p 8080:8080 \
-              -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
-              -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
-              -e AWS_DEFAULT_REGION="${{ secrets.AWS_DEFAULT_REGION }}" \
-              -e PINECONE_API_KEY="${{ secrets.PINECONE_API_KEY }}" \
-              -e HUGGINGFACE_API_KEY="${{ secrets.HUGGINGFACE_API_KEY }}" \
+              -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY" \
+              -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_KEY" \
+              -e AWS_DEFAULT_REGION="$AWS_REGION" \
+              -e PINECONE_API_KEY="$PINECONE_KEY" \
+              -e HUGGINGFACE_API_KEY="$HUGGINGFACE_KEY" \
               $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
