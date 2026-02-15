@@ -120,6 +120,11 @@ jobs:
             fi
 
             echo "Authenticating EC2 with ECR..."
+            # Set AWS credentials for the aws command
+            export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY"
+            export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_KEY"
+            export AWS_DEFAULT_REGION="$AWS_REGION"
+
             aws ecr get-login-password --region $AWS_REGION | \
               docker login --username AWS --password-stdin $ECR_REGISTRY
 
