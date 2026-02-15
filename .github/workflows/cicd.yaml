@@ -128,17 +128,27 @@ jobs:
             aws ecr get-login-password --region $AWS_REGION | \
               docker login --username AWS --password-stdin $ECR_REGISTRY
 
-            echo "Cleaning up old Docker images to free space..."
+            echo "Stopping existing container first..."
+            docker stop my-app || true
+            docker rm my-app || true
+
+            echo "Cleaning up Docker resources..."
+            # Remove all unused images, containers, networks, and volumes
             docker system prune -af --volumes || true
+
+            # Clean up containerd content store
+            sudo systemctl stop docker || true
+            sudo rm -rf /var/lib/containerd/io.containerd.content.v1.content/ingest/* || true
+            sudo systemctl start docker || true
+
             echo "Disk space after cleanup:"
-            df -h /var/lib/docker
+            df -h
+
+            echo "Waiting for Docker to be ready..."
+            sleep 5
 
             echo "Pulling latest Docker image..."
             docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
-            echo "Stopping existing container..."
-            docker stop my-app || true
-            docker rm my-app || true
 
             echo "Running new container..."
             docker run -d --name my-app -p 8080:8080 \
